@@ -16,7 +16,7 @@
 #include <iostream>
 
 int main(int argc, char** argv) {
-    const std::string wordsPath = argc > 1 ? argv[1] : "words.txt";
+    const std::string wordsPath = argc > 1 ? argv[1] : "en_50k_clean.txt";
     const int port = argc > 2 ? std::atoi(argv[2]) : 8080;
     const std::string staticDir = argc > 3 ? argv[3] : "";
 

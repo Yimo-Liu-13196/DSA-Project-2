@@ -6,36 +6,47 @@
 #include "Trie.h"
 
 #include <fstream>
+#include <limits>
 #include <mutex>
+#include <sstream>
 #include <stdexcept>
 #include <string>
 #include <vector>
 
 class AutocorrectService {
 public:
-    // Seeds the trie from a word list (one word per line). Earlier lines are
-    // treated as more common: frequency = (number of words) - line index.
-    // Returns how many words were loaded.
     std::size_t loadWords(const std::string& path) {
         std::ifstream in(path);
         if (!in) throw std::runtime_error("cannot open word list: " + path);
 
-        std::vector<std::string> words;
-        for (std::string line; std::getline(in, line);) {
-            while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
-            if (!line.empty()) words.push_back(line);
-        }
-
         std::lock_guard<std::mutex> lock(mutex_);
-        for (std::size_t i = 0; i < words.size(); i++) {
-            const unsigned int freq = static_cast<unsigned int>(words.size() - i);
+        std::string line;
+        std::size_t lineNumber = 0;
+        while (std::getline(in, line)) {
+            ++lineNumber;
+            std::istringstream fields(line);
+            std::string word;
+            std::string frequencyText;
+            std::string extra;
+            if (!(fields >> word)) continue;
+            if (!(fields >> frequencyText) || (fields >> extra)) {
+                throw std::runtime_error("invalid word list entry on line " + std::to_string(lineNumber));
+            }
+            const unsigned int frequency = parseFrequency(frequencyText, lineNumber);
             try {
-                trie_.insert(words[i], freq);
-                rbt_.insert(words[i], freq);  // same rules, so both accept/reject the same words
+                const bool trieInserted = trie_.insert(word, frequency);
+                const bool treeInserted = rbt_.insert(word, frequency);
+                if (trieInserted != treeInserted) {
+                    throw std::logic_error("data structures disagree on insertion");
+                }
+                if (!trieInserted) {
+                    trie_.incrementFrequency(word, frequency);
+                    rbt_.incrementFrequency(word, frequency);
+                }
             } catch (const std::invalid_argument&) {
-                // skip entries that are rejected (digits, spaces, ...)
             }
         }
+        if (in.bad()) throw std::runtime_error("could not read word list: " + path);
         return trie_.size();
     }
 
@@ -85,6 +96,25 @@ public:
     }
 
 private:
+    static unsigned int parseFrequency(const std::string& text, std::size_t lineNumber) {
+        unsigned int frequency = 0;
+        const unsigned int maximum = std::numeric_limits<unsigned int>::max();
+        for (char character : text) {
+            if (character < '0' || character > '9') {
+                throw std::runtime_error("invalid frequency on line " + std::to_string(lineNumber));
+            }
+            const unsigned int digit = static_cast<unsigned int>(character - '0');
+            if (frequency > (maximum - digit) / 10) {
+                throw std::overflow_error("frequency exceeds unsigned int on line " + std::to_string(lineNumber));
+            }
+            frequency = frequency * 10 + digit;
+        }
+        if (frequency == 0) {
+            throw std::runtime_error("frequency must be positive on line " + std::to_string(lineNumber));
+        }
+        return frequency;
+    }
+
     Trie trie_;
     RedBlackTree rbt_;
     std::mutex mutex_;  // Trie has no internal locking and httplib is multi-threaded

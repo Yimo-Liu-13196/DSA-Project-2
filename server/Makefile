@@ -1,8 +1,6 @@
 # Build from this folder. Needs httplib.h in this folder (cpp-httplib, single header).
-# The backend is compiled from DSA-Project-2 untouched; its main.cpp (the test driver) is NOT used.
-BACKEND ?= ../DSA-Project-2
+BACKEND ?= ../backend
 
-# Windows (MinGW): httplib needs a Windows 10 target, winsock, and static linking to avoid missing-DLL exits.
 ifeq ($(OS),Windows_NT)
   PLATFORM_FLAGS = -D_WIN32_WINNT=0x0A00 -static -lws2_32
 endif
